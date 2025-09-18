@@ -15,38 +15,29 @@ final class PostsService
 {
     use RedditClient;
 
-    /**
-     * @param CreateFridgeAction $createFridge
-     */
     public function __construct(
         private readonly CreateFridgeAction $createFridge
     ) {
         $this->initialiseRedditClient();
     }
 
-    /**
-     * @param string $token
-     * @return string
-     */
     public function getPosts(string $token): string
     {
         try {
             $response = $this->client->get('https://oauth.reddit.com/r/FridgeDetective/top?raw_json=1', [
                 'headers' => [
                     'User-Agent' => $this->userAgent,
-                    'Authorization' => 'Bearer ' . $token,
+                    'Authorization' => 'Bearer '.$token,
                 ],
             ]);
 
             return $response->getBody();
-        }
-        catch (GuzzleException $e) {
+        } catch (GuzzleException $e) {
             return $e->getMessage();
         }
     }
 
     /**
-     * @param string $postsJson
      * @return Collection<int, array{
      *     success: bool,
      *     fridge?: Fridge,
@@ -63,7 +54,7 @@ final class PostsService
         $posts = json_decode($postsJson, true);
         $results = collect();
 
-        if (!isset($posts['data']['children'])) {
+        if (! isset($posts['data']['children'])) {
             return $results;
         }
 
@@ -76,7 +67,7 @@ final class PostsService
     }
 
     /**
-     * @param array<string,mixed> $post
+     * @param  array<string,mixed>  $post
      * @return array{
      *      success: bool,
      *      fridge?: Fridge,
@@ -103,7 +94,8 @@ final class PostsService
                 ];
             }
 
-            $fridge = $this->createFridge->handle($validator->validated());
+            $imageUrls = $this->getPostImages($post['data'] ?? []);
+            $fridge = $this->createFridge->handle($validator->validated(), $imageUrls);
 
             return [
                 'success' => true,
@@ -120,7 +112,7 @@ final class PostsService
     }
 
     /**
-     * @param array<string,mixed> $post
+     * @param  array<string,mixed>  $post
      * @return array{
      *      author: string,
      *      permalink: string,
@@ -131,9 +123,44 @@ final class PostsService
     {
         return [
             'author' => $post['data']['author'] ?? '',
-            'permalink' => 'https://www.reddit.com' . ($post['data']['permalink'] ?? ''),
+            'permalink' => 'https://www.reddit.com'.($post['data']['permalink'] ?? ''),
             'post_created_at' => $post['data']['created_utc'] ?? 0,
         ];
+    }
+
+    /**
+     * @param  array<string,mixed>  $post
+     * @return array<string>
+     */
+    private function getPostImages(array $post): array
+    {
+        $images = [];
+
+        if (isset($post['is_gallery']) && $post['is_gallery'] && isset($post['gallery_data']['items'])) {
+            $mediaMetadata = $post['media_metadata'] ?? [];
+
+            foreach ($post['gallery_data']['items'] as $item) {
+                $mediaId = $item['media_id'] ?? '';
+
+                if (! empty($mediaId) && isset($mediaMetadata[$mediaId])) {
+                    $metadata = $mediaMetadata[$mediaId];
+
+                    // Try to get the highest quality image
+                    if (isset($metadata['s']['u'])) {
+                        $images[] = html_entity_decode($metadata['s']['u']);
+                    } elseif (isset($metadata['p']) && is_array($metadata['p']) && count($metadata['p']) > 0) {
+                        $lastImage = end($metadata['p']);
+                        if (isset($lastImage['u'])) {
+                            $images[] = html_entity_decode($lastImage['u']);
+                        }
+                    }
+                }
+            }
+        } elseif (isset($post['preview']['images'][0]['source']['url'])) {
+            $images[] = html_entity_decode($post['preview']['images'][0]['source']['url']);
+        }
+
+        return array_filter($images);
     }
 
     /**
@@ -141,7 +168,7 @@ final class PostsService
      */
     private function getValidationRules(): array
     {
-        $request = new StoreFridgeRequest();
+        $request = new StoreFridgeRequest;
         return $request->rules();
     }
 }
