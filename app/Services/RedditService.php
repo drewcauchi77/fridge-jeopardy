@@ -46,7 +46,7 @@ class RedditService
     public function getSubredditPosts(string $token)
     {
         try {
-            $response = $this->client->get('https://oauth.reddit.com/r/FridgeDetective/top', [
+            $response = $this->client->get('https://oauth.reddit.com/r/FridgeDetective/top?raw_json=1', [
                 'headers' => [
                     'User-Agent' => $this->userAgent,
                     'Authorization' => 'Bearer ' . $token,
