@@ -23,7 +23,7 @@ class StoreFridgeRequest extends FormRequest
         return [
             'author' => ['required', 'string', 'max:255'],
             'permalink' => ['required', 'string', 'max:255', 'unique:fridges,permalink'],
-            'post_created_at' => ['required', 'float'],
+            'post_created_at' => ['required', 'numeric:strict'],
         ];
     }
 }

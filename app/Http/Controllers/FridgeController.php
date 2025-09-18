@@ -5,7 +5,6 @@ namespace App\Http\Controllers;
 use App\Actions\CreateFridgeAction;
 use App\Http\Requests\StoreFridgeRequest;
 use App\Models\Fridge;
-use Illuminate\Http\Request;
 
 class FridgeController extends Controller
 {

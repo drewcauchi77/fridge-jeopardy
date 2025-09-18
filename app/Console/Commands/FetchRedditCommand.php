@@ -2,77 +2,84 @@
 
 namespace App\Console\Commands;
 
-use App\Actions\CreateFridgeAction;
-use App\Services\RedditService;
+use App\Models\Fridge;
+use App\Services\Reddit\OAuthService;
+use App\Services\Reddit\PostsService;
 use GuzzleHttp\Exception\GuzzleException;
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\Validator;
-use Illuminate\Validation\ValidationException;
+use Illuminate\Support\Collection;
 
 class FetchRedditCommand extends Command
 {
     /**
-     * The name and signature of the console command.
-     *
      * @var string
      */
-    protected $signature = 'app:fetch-reddit-command';
+    protected $signature = 'fetch:fridges';
 
     /**
-     * The console command description.
-     *
      * @var string
      */
     protected $description = 'Command description';
 
     /**
-     * Execute the console command.
+     * @param OAuthService $redditService
+     * @param PostsService $postsService
+     * @return void
      */
-    public function handle(RedditService $redditService, CreateFridgeAction $createFridge): void
+    public function handle(OAuthService $redditService, PostsService $postsService): void
     {
         try {
-            $this->info("Fetching Reddit Access Token...");
+            $this->info("Fetching Reddit access token...");
             $token = $redditService->getAccessToken();
-            $this->info("Valid Reddit Access Token Obtained...");
+            $this->info("Valid Reddit access token obtained...");
             $this->info("Token: ". $token);
 
-            $this->info("Fetching Subreddit Posts...");
-            $posts = $redditService->getSubredditPosts($token);
-            $this->info("Subreddit Posts Obtained...");
-            $this->info("Posts: ". $posts);
+            $this->info("Fetching subreddit posts...");
+            $posts = $postsService->getPosts($token);
+            $this->info("Subreddit posts obtained...");
 
-            $jsonPosts = json_decode($posts, true);
-
-            foreach ($jsonPosts['data']['children'] as $post) {
-                $attributes = [
-                    'author' => $post['data']['author'] ?? '',
-                    'permalink' => 'https://www.reddit.com' . ($post['data']['permalink'] ?? ''),
-                    'post_created_at' => $post['data']['created_utc'] ?? 0,
-                ];
-
-                try {
-                    // Validate data using the same rules as StoreFridgeRequest
-                    $validator = Validator::make($attributes, [
-                        'author' => ['required', 'string', 'max:255'],
-                        'permalink' => ['required', 'string', 'max:255', 'unique:fridges,permalink'],
-                        'post_created_at' => ['required', 'numeric'],
-                    ]);
-
-                    if ($validator->fails()) {
-                        $this->warn("Skipping invalid post: " . $validator->errors()->first());
-                        continue;
-                    }
-
-                    // Call the action directly with validated data
-                    $fridge = $createFridge->handle($validator->validated());
-                    $this->info("Created fridge: {$fridge->id} by {$fridge->author}");
-                } catch (\Exception $e) {
-                    $this->error("Failed to create fridge: " . $e->getMessage());
-                }
-            }
+            $this->info("Processing posts and creating fridge records...");
+            $results = $postsService->processPosts($posts);
+            $this->displayPostProcessorResults($results);
+            $this->info("Done processing posts...");
         }
         catch (GuzzleException $e) {
             $this->error($e->getMessage());
+        }
+    }
+
+    /**
+     * @param Collection<int, array{
+     *      success: bool,
+     *      fridge?: Fridge,
+     *      error?: string,
+     *      post_data: array{
+     *           author: string,
+     *           permalink: string,
+     *           post_created_at: float
+     *      }
+     *  }> $results
+     * @return void
+     */
+    private function displayPostProcessorResults(Collection $results): void
+    {
+        $successful = $results->where('success', true);
+        $failed = $results->where('success', false);
+
+        if ($failed->isNotEmpty()) {
+            foreach ($failed as $failure) {
+                $author = $failure['post_data']['author'];
+                $error = $failure['error'] ?? 'Unknown';
+                $this->warn("  - {$author}: {$error}");
+            }
+        }
+
+        foreach ($successful as $success) {
+            $fridge = $success['fridge'] ?? null;
+
+            if ($fridge) {
+                $this->info("Created fridge: {$fridge->id} by {$fridge->author}");
+            }
         }
     }
 }
