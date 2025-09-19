@@ -5,10 +5,10 @@ namespace App\Actions;
 use App\Models\Fridge;
 use Illuminate\Support\Facades\DB;
 
-final class CreateFridgeAction
+final readonly class CreateFridgeAction
 {
     public function __construct(
-        private readonly CreateImageAction $createImageAction
+        private CreateImageAction $createImageAction
     ) {}
 
     /**

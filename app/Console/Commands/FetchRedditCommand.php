@@ -5,9 +5,11 @@ namespace App\Console\Commands;
 use App\Models\Fridge;
 use App\Services\Reddit\OAuthService;
 use App\Services\Reddit\PostsService;
+use Codewithkyrian\Transformers\Exceptions\UnsupportedTaskException;
 use GuzzleHttp\Exception\GuzzleException;
 use Illuminate\Console\Command;
 use Illuminate\Support\Collection;
+use function Codewithkyrian\Transformers\Pipelines\pipeline;
 
 class FetchRedditCommand extends Command
 {
@@ -42,8 +44,14 @@ class FetchRedditCommand extends Command
             $results = $postsService->processPosts($posts);
             $this->displayPostProcessorResults($results);
             $this->info("Done processing posts...");
+
+            $pipe = pipeline('sentiment-analysis', 'Xenova/distilbert-base-uncased-finetuned-sst-2-english');
+            $out = $pipe('I hate people!');
+            $this->info(json_encode($out));
         }
         catch (GuzzleException $e) {
+            $this->error($e->getMessage());
+        } catch (UnsupportedTaskException $e) {
             $this->error($e->getMessage());
         }
     }
